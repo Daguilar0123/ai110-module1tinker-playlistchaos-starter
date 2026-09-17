@@ -1,0 +1,69 @@
+# AI Usage Log for Playlist Chaos
+#
+# Structured log of AI-assisted debugging sessions for the "Reflect on Your AI
+# Collaborations" step of this assignment. Append one entry to `entries` per
+# AI collaboration (at minimum, one per required fix from README.md).
+#
+# Ordering convention: `entries` is kept in chronological order by
+# `timestamp`, not by when it was written into this file. If you're backfilling
+# an entry after the fact and its timestamp falls before the last entry
+# currently in the list, insert it at its correct chronological position
+# rather than appending it at the end — file order should always match
+# timestamp order, so a reader (human or AI) can trust top-to-bottom = oldest
+# to newest without needing to re-sort.
+#
+# session_id: the Claude Code session UUID the entry's prompt was made in.
+# session_name: a list, not a single string — the session's name over time.
+#   The first element is derived from the session's first user message; if the
+#   session is later relabeled, append the new name rather than replacing the
+#   old one, so the last (rightmost) element is always the current name and
+#   the full list is the rename history. Entries from the same session share
+#   the same session_id and session_name list.
+#
+# Before writing an entry's `reflection`, ask:
+#   - Did AI save time or add confusion?
+#   - Did I understand why the fix worked?
+#   - How might I prompt differently next time?
+
+entries:
+  - timestamp: 2026-09-17T14:20:00-04:00
+    session_id: 9976e7eb-8da1-4f54-ba6a-3984223c67b2
+    session_name:
+      - first-get-oriented-and-locate-ai-log
+    prompt: |
+      First get oriented by reading claude.md and understanding what this repo
+      is. Then read the prompting guide section i pasted below, and explain
+      where the ai log should be set up.
+    result: >
+      AI read CLAUDE.md and README.md, confirmed neither file already had a
+      home for an AI usage log, and recommended a standalone log file at the
+      repo root rather than editing README.md (the fixed assignment brief) or
+      CLAUDE.md (agent guidance, not a student deliverable). Verified by
+      inspecting both files directly before deciding.
+    reflection: >
+      Asking the assistant to check for an existing convention before creating
+      a new file avoided duplicating structure or overwriting the assignment
+      spec. Next time, name the exact file(s) already suspected to be relevant
+      up front to skip a round of orientation.
+
+  - timestamp: 2026-09-17T14:47:00-04:00
+    session_id: 9976e7eb-8da1-4f54-ba6a-3984223c67b2
+    session_name:
+      - first-get-oriented-and-locate-ai-log
+    prompt: |
+      I do not like the format of the ai usage log. is there a better document
+      for keeping track of a log? for example yaml or json vs .md? for this
+      type of log, that might be read by another human or it might be read by
+      an ai to describe to a human how i work with ai. if that is the case,
+      then prioritizing machine readability seems important. what do you
+      think?
+    result: >
+      AI recommended YAML over markdown or JSON for this log's fixed-shape,
+      repeating records, since YAML stays reliably machine-parseable while
+      still supporting readable multiline text via block scalars, unlike
+      loosely-structured markdown or comment-less JSON. Converted the seeded
+      AI_USAGE_LOG.md entry into this file and removed the markdown version.
+    reflection: >
+      Framing the choice as human-readable vs. machine-readable surfaced a
+      format decision worth settling while the log still had one entry, rather
+      than migrating a large log later.
