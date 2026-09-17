@@ -1,8 +1,13 @@
 from typing import Dict, List, Optional, Tuple
 
+# Type aliases for song and playlist data structures.
+
+# A song is represented as a dictionary with keys like "title", "artist", "genre", "energy", and "tags".
+# A playlist map is a dictionary mapping mood labels ("Hype", "Chill", "Mixed") to lists of songs.
 Song = Dict[str, object]
 PlaylistMap = Dict[str, List[Song]]
 
+# Default user profile for classification and playlist building.
 DEFAULT_PROFILE = {
     "name": "Default",
     "hype_min_energy": 7,
@@ -56,21 +61,55 @@ def normalize_song(raw: Song) -> Song:
         "tags": tags,
     }
 
-
+# Classification logic for songs based on user profile and song attributes.
 def classify_song(song: Song, profile: Dict[str, object]) -> str:
-    """Return a mood label given a song and user profile."""
+    """Return a mood label given a song and user profile.
+       Possible return values are "Hype", "Chill", or "Mixed".
+       "Hype" indicates high-energy songs,
+       "Chill" indicates low-energy songs,
+       and "Mixed" indicates songs that don't clearly fit either category.
+    """
+
+    # Extract relevant song and profile attributes for classification.
+
+    # energy level of the song
+    # default to 0 if energy is not specified
     energy = song.get("energy", 0)
+
+    # genre of the song
+    # default to empty string if genre is not specified
     genre = song.get("genre", "")
+
+    # title of the song
+    # default to empty string if title is not specified
     title = song.get("title", "")
 
+    # Extract relevant profile attributes for classification.
+
+    # minimum energy threshold for a song to be considered "Hype"
+    # 7 is the default minimum energy for "Hype" songs
     hype_min_energy = profile.get("hype_min_energy", 7)
+
+    # maximum energy threshold for a song to be considered "Chill"
+    # 3 is the default maximum energy for "Chill" songs
     chill_max_energy = profile.get("chill_max_energy", 3)
+
+
+    # user's favorite genre
     favorite_genre = profile.get("favorite_genre", "")
 
+    # keywords associated with "Hype" songs
     hype_keywords = ["rock", "punk", "party"]
+
+    # keywords associated with "Chill" songs
     chill_keywords = ["lofi", "ambient", "sleep"]
 
+    # check if the song's genre contains any "Hype" keywords
+    # for k in hype_keywords: check if k is in genre
     is_hype_keyword = any(k in genre for k in hype_keywords)
+
+    # check if the song's title contains any "Chill" keywords
+    # for k in chill_keywords: check if k is in title
     is_chill_keyword = any(k in title for k in chill_keywords)
 
     if genre == favorite_genre or energy >= hype_min_energy or is_hype_keyword:
@@ -192,6 +231,9 @@ def lucky_pick(
 def random_choice_or_none(songs: List[Song]) -> Optional[Song]:
     """Return a random song or None."""
     import random
+
+    if not songs:
+        return None
 
     return random.choice(songs)
 
