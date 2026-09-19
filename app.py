@@ -194,21 +194,33 @@ def profile_sidebar():
         value=str(profile.get("name", "")),
     )
 
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        profile["hype_min_energy"] = st.sidebar.slider(
-            "Hype min energy",
-            min_value=1,
-            max_value=10,
-            value=int(profile.get("hype_min_energy", 7)),
-        )
-    with col2:
-        profile["chill_max_energy"] = st.sidebar.slider(
-            "Chill max energy",
-            min_value=1,
-            max_value=10,
-            value=int(profile.get("chill_max_energy", 3)),
-        )
+    # Fix (2026-09-19): one range slider in place of two independent sliders.
+    # Two sliders let Chill max be dragged above Hype min, and an overlapping
+    # band resolved silently to Hype. A range slider's handles cannot cross, so
+    # the invalid state is simply unreachable -- cheaper and safer than clamping
+    # one slider's max_value to the other's value, which changes the widget's
+    # identity on every move and resets its state.
+    # This also drops a st.sidebar.columns(2) block that never did anything:
+    # the calls inside it were st.sidebar.slider(...), and naming the sidebar
+    # explicitly bypasses the `with col1:` context, so the columns rendered
+    # empty and the sliders ran full width regardless.
+    chill_max_energy, hype_min_energy = st.sidebar.slider(
+        "Mood energy bands",
+        min_value=1,
+        max_value=10,
+        value=(
+            int(profile.get("chill_max_energy", 3)),
+            int(profile.get("hype_min_energy", 7)),
+        ),
+        help=(
+            "Energy at or below the left handle is Chill; at or above the right "
+            "handle is Hype. Anything between them is decided by the song's "
+            "genre and tags, or lands in Mixed. Handles together means no Mixed "
+            "band, and a tie goes to Hype."
+        ),
+    )
+    profile["chill_max_energy"] = chill_max_energy
+    profile["hype_min_energy"] = hype_min_energy
 
     profile["favorite_genre"] = st.sidebar.selectbox(
         "Favorite genre",
