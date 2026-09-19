@@ -1,0 +1,9 @@
+# Compiled Python bytecode. Derived entirely from the .py sources and
+# regenerated on next import, so there is nothing here worth versioning.
+# Untracked 2026-09-19: two .pyc files had been committed, including one for
+# CPython 3.14 while the repo's .venv is 3.13, so it could never be refreshed.
+# They also produced commits whose only content was "a binary blob changed
+# because Python ran", which is noise in a history meant to read as a record
+# of decisions.
+__pycache__/
+*.py[cod]

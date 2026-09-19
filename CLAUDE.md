@@ -19,8 +19,9 @@ edge case.
   checks) and `.venv/bin/python -B test_app_sidebar.py` (sidebar wiring via
   `st.testing.v1.AppTest`, headless, 20 checks). Both are plain scripts that print
   PASS/FAIL and exit non-zero on failure. Added 2026-09-19.
-- No lint or build tooling, no pytest, no config files, no CI. The `-B` flag keeps test
-  runs from rewriting the git-tracked `__pycache__/*.pyc` files.
+- No lint or build tooling, no pytest, no config files, no CI. The `-B` flag is no longer
+  load-bearing now that `__pycache__/` is gitignored (2026-09-19); it is kept in the
+  documented commands only to avoid writing bytecode nobody reads.
 
 ## Architecture
 
@@ -80,9 +81,16 @@ These live in `playlist_logic.py` and match the "unpredictable behavior" the REA
 
 ### Repo hygiene notes
 
-- No `.gitignore` exists. `__pycache__/*.pyc` files are currently committed to git and will
-  keep showing as modified/dirty as Python regenerates them — flag this if asked about
-  unexpected working-tree changes, but don't add a `.gitignore` or untrack files unless asked.
+- `.gitignore` covers `__pycache__/` and `*.py[cod]` (added 2026-09-19). This **reverses**
+  the note that stood here before: `.pyc` files used to be committed, and the guidance was
+  not to untrack them. Danny asked for the convention to change on 2026-09-19, so compiled
+  bytecode is now ignored and `git status` stays clean as Python regenerates it. Two files
+  were untracked with `git rm --cached` (they remain on disk); the old blobs are left in
+  history rather than rewriting it. One of them was built for CPython 3.14 while the repo's
+  `.venv` is 3.13, so it had been stale and unrefreshable since 2026-09-15.
+- Don't commit build artifacts here. The rationale Danny gave: two commits in this repo say
+  only `chore: update compiled playlist_logic.pyc file`, which records nothing a later
+  reader can use, and this history is meant to read as a record of decisions.
 - `.agents/skills/developing-with-streamlit` and `.claude/skills/developing-with-streamlit` are
   git-tracked symlinks pointing into `.venv/lib/python3.13/site-packages/streamlit/...`. They
   only resolve when that exact `.venv` exists at that exact relative path — they'll be dangling
