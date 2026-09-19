@@ -1,4 +1,5 @@
-from typing import Dict, List, Optional, Tuple
+import re
+from typing import Dict, List, Optional, Set, Tuple
 
 # Type aliases for song and playlist data structures.
 
@@ -49,7 +50,10 @@ def normalize_song(raw: Song) -> Song:
         except ValueError:
             energy = 0
 
-    tags = raw.get("tags", [])
+    # Fix (2026-09-19): `or []` rather than a .get() default, because a "tags"
+    # key that is present but None slips past the default and was stored as
+    # None, which then crashed rendering in app.py ("can only join an iterable").
+    tags = raw.get("tags") or []
     if isinstance(tags, str):
         tags = [tags]
 
@@ -61,6 +65,38 @@ def normalize_song(raw: Song) -> Song:
         "tags": tags,
     }
 
+# Words that hint at a song's mood. These are hints, not overrides: the energy
+# bands decide first (see classify_song). Both lists are matched against the
+# same text, so neither mood gets a field the other one doesn't.
+HYPE_KEYWORDS = ("rock", "punk", "party")
+CHILL_KEYWORDS = ("lofi", "ambient", "sleep")
+
+
+def mood_keyword_words(song: Song) -> Set[str]:
+    """Return the lowercased whole words of a song's genre, title and tags.
+
+    Lowercasing happens here at comparison time rather than in normalize_title()
+    because app.py renders song["title"] verbatim and must keep its casing.
+
+    Whole words, not substrings: genre comes from a fixed selectbox, but titles
+    and tags are free text, where substring matching misfires -- "Rocket Man"
+    would read as a rock song and "Sleepless Nights" as a sleep one. The cost is
+    that near-misses no longer match either: "afterparty" is not "party",
+    "sleepy" is not "sleep", and hyphenated "Lo-fi" is not "lofi" (it never was;
+    the seed song "Lo-fi Rain" is Chill through its genre and energy, not its
+    title). Splitting on non-alphanumerics keeps multi-word and hyphenated
+    genres working, so "indie rock" and "pop-punk" still match.
+    """
+    tags = song.get("tags") or []
+    if isinstance(tags, str):
+        tags = [tags]
+
+    parts = [str(song.get("genre", "")), str(song.get("title", ""))]
+    parts.extend(str(tag) for tag in tags)
+
+    return set(re.findall(r"[a-z0-9]+", " ".join(parts).lower()))
+
+
 # Classification logic for songs based on user profile and song attributes.
 def classify_song(song: Song, profile: Dict[str, object]) -> str:
     """Return a mood label given a song and user profile.
@@ -68,53 +104,47 @@ def classify_song(song: Song, profile: Dict[str, object]) -> str:
        "Hype" indicates high-energy songs,
        "Chill" indicates low-energy songs,
        and "Mixed" indicates songs that don't clearly fit either category.
+
+       The profile's "favorite_genre" is deliberately not consulted. It used to
+       return "Hype" on a genre match, which meant choosing a favorite of
+       "ambient" threw every energy-1 sleep track into the Hype playlist.
+       Liking a genre says nothing about its energy: it is an affinity signal,
+       not a mood one, and belongs in ordering or lucky-pick weighting instead.
+       (Danny authorized dropping it, 2026-09-19.)
     """
-
-    # Extract relevant song and profile attributes for classification.
-
     # energy level of the song
     # default to 0 if energy is not specified
     energy = song.get("energy", 0)
 
-    # genre of the song
-    # default to empty string if genre is not specified
-    genre = song.get("genre", "")
-
-    # title of the song
-    # default to empty string if title is not specified
-    title = song.get("title", "")
-
-    # Extract relevant profile attributes for classification.
-
     # minimum energy threshold for a song to be considered "Hype"
     # 7 is the default minimum energy for "Hype" songs
     hype_min_energy = profile.get("hype_min_energy", 7)
-
     # maximum energy threshold for a song to be considered "Chill"
     # 3 is the default maximum energy for "Chill" songs
     chill_max_energy = profile.get("chill_max_energy", 3)
 
-
-    # user's favorite genre
-    favorite_genre = profile.get("favorite_genre", "")
-
-    # keywords associated with "Hype" songs
-    hype_keywords = ["rock", "punk", "party"]
-
-    # keywords associated with "Chill" songs
-    chill_keywords = ["lofi", "ambient", "sleep"]
-
-    # check if the song's genre contains any "Hype" keywords
-    # for k in hype_keywords: check if k is in genre
-    is_hype_keyword = any(k in genre for k in hype_keywords)
-
-    # check if the song's title contains any "Chill" keywords
-    # for k in chill_keywords: check if k is in title
-    is_chill_keyword = any(k in title for k in chill_keywords)
-
-    if genre == favorite_genre or energy >= hype_min_energy or is_hype_keyword:
+    # Fix (2026-09-19): the energy bands are tested on their own, before any
+    # keyword test. They are the only mood signal the user actually controls,
+    # so they have to outrank everything else. They previously shared one flat
+    # `or` chain with the keyword and favorite-genre tests, which pinned a song
+    # to "Hype" no matter where the sliders were set: every rock song stayed
+    # "Hype" even with Hype min at 10 and Chill max at 9, and Hotel California
+    # (energy 6) stayed "Hype" with Chill max raised to 6.
+    if energy >= hype_min_energy:
         return "Hype"
-    if energy <= chill_max_energy or is_chill_keyword:
+    if energy <= chill_max_energy:
+        return "Chill"
+
+    # Only songs in the ambiguous middle band reach here, so keywords break the
+    # tie rather than overriding the profile. A song that hits both lists (or
+    # neither) stays "Mixed" instead of falling through to "Hype".
+    words = mood_keyword_words(song)
+    is_hype_keyword = any(k in words for k in HYPE_KEYWORDS)
+    is_chill_keyword = any(k in words for k in CHILL_KEYWORDS)
+
+    if is_hype_keyword and not is_chill_keyword:
+        return "Hype"
+    if is_chill_keyword and not is_hype_keyword:
         return "Chill"
     return "Mixed"
 

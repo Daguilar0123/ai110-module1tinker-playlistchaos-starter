@@ -15,7 +15,12 @@ edge case.
 - Install deps: `pip install -r requirements.txt` (only dependency: `streamlit>=1.36.0`) —
   a `.venv` already exists in the repo with this installed.
 - Run the app: `streamlit run app.py`
-- No lint, test, or build tooling exists in this repo (no pytest, no config files, no CI).
+- Run the checks: `.venv/bin/python -B test_playlist_logic.py` (classification rules, 29
+  checks) and `.venv/bin/python -B test_app_sidebar.py` (sidebar wiring via
+  `st.testing.v1.AppTest`, headless, 20 checks). Both are plain scripts that print
+  PASS/FAIL and exit non-zero on failure. Added 2026-09-19.
+- No lint or build tooling, no pytest, no config files, no CI. The `-B` flag keeps test
+  runs from rewriting the git-tracked `__pycache__/*.pyc` files.
 
 ## Architecture
 
@@ -37,10 +42,18 @@ Two files carry all logic:
 
 These live in `playlist_logic.py` and match the "unpredictable behavior" the README describes:
 
-- `classify_song`: checks Hype conditions before Chill, so a song matching both always lands
-  in Hype. Hype genre keywords (`rock`, `punk`, `party`) are matched against the lowercased
-  genre; Chill keywords (`lofi`, `ambient`, `sleep`) are matched against the *raw, unlowercased*
-  title (`normalize_title` only strips whitespace, unlike `normalize_artist`/`normalize_genre`).
+- `classify_song`: **fixed 2026-09-19 — this is no longer a quirk.** It now decides in two
+  tiers. Tier 1: the profile's energy bands alone (`energy >= hype_min_energy` -> Hype,
+  `energy <= chill_max_energy` -> Chill), because they are the only mood signal the user
+  controls. Tier 2, reached only by songs in the ambiguous middle band: `HYPE_KEYWORDS`
+  (`rock`, `punk`, `party`) and `CHILL_KEYWORDS` (`lofi`, `ambient`, `sleep`) break the tie,
+  matched by `mood_keyword_words()` as **whole words** against the lowercased genre + title +
+  tags together. A song hitting both lists, or neither, stays Mixed. Consequences worth
+  knowing: the profile's `favorite_genre` is deliberately **not** read (it used to return
+  "Hype" on a genre match, so a favorite of "ambient" threw energy-1 sleep tracks into Hype);
+  a mid-energy rock song still lands in Hype at the default profile, which is intended
+  (Danny, 2026-09-19); and whole-word matching means "afterparty" is not "party" and
+  "Rocket Man" is not a rock song. Do not change the keyword lists to make a check pass.
 - `compute_playlist_stats`: `hype_ratio` divides by `len(hype)` instead of total song count, so
   it's always 1.0 whenever any hype song exists. `avg_energy` sums energy over the `hype` list
   only but divides by the total song count across all playlists.
@@ -49,9 +62,21 @@ These live in `playlist_logic.py` and match the "unpredictable behavior" the REA
   passes `b={}`, but would cause aliasing bugs if that call site changes.
 - `lucky_pick`: `mode="any"` only draws from `Hype + Chill` — Mixed songs are never eligible.
   (README's stretch goals explicitly mention improving Mixed-song handling.)
-- `app.py`'s `profile_sidebar()`: the `favorite_genre` selectbox is created with a hardcoded
-  `index=0`, so it visually resets to "rock" on every rerender instead of reflecting the
-  profile's stored value.
+- `app.py`'s `profile_sidebar()`: **the "Favorite genre" selectbox no longer affects any
+  playlist** (2026-09-19), since `classify_song` stopped reading `favorite_genre`. It still
+  renders and still records the choice into the profile, so it currently looks live but is
+  inert — repurposing it (lucky-pick weighting, sort order) is an open follow-up.
+  Correction (2026-09-19): an earlier note here claimed the hardcoded `index=0` made it
+  "visually reset to rock on every rerender". That is **wrong**. `index=0` is only the
+  initial default; Streamlit persists widget state across reruns, so a selection survives.
+  Verified with AppTest: after selecting "ambient", it still reads "ambient" following two
+  unrelated reruns.
+- `app.py`'s `profile_sidebar()` energy controls: **fixed 2026-09-19.** The two independent
+  sliders (which allowed Chill max above Hype min, an overlapping band that silently
+  resolved to Hype) are now one two-handle range slider, "Mood energy bands", whose handles
+  cannot cross. This also removed a `st.sidebar.columns(2)` block that never rendered
+  anything, because the `st.sidebar.slider(...)` calls inside it bypassed the `with col1:`
+  context.
 
 ### Repo hygiene notes
 
