@@ -185,12 +185,18 @@ def compute_playlist_stats(playlists: PlaylistMap) -> Dict[str, object]:
     chill = playlists.get("Chill", [])
     mixed = playlists.get("Mixed", [])
 
-    total = len(hype)
+    # Fix (2026-09-19): both figures are over the whole library, not just Hype.
+    # hype_ratio divided the Hype count by itself, so it read 1.00 whenever a
+    # single Hype song existed and never moved no matter what was added.
+    total = len(all_songs)
     hype_ratio = len(hype) / total if total > 0 else 0.0
 
+    # Fix (2026-09-19): avg_energy summed the Hype list but divided by every
+    # song, so it was not an average of anything -- the seed library read 4.05
+    # (89 / 22) instead of 5.73 (126 / 22).
     avg_energy = 0.0
     if all_songs:
-        total_energy = sum(song.get("energy", 0) for song in hype)
+        total_energy = sum(song.get("energy", 0) for song in all_songs)
         avg_energy = total_energy / len(all_songs)
 
     top_artist, top_count = most_common_artist(all_songs)
@@ -247,13 +253,28 @@ def lucky_pick(
     playlists: PlaylistMap,
     mode: str = "any",
 ) -> Optional[Song]:
-    """Pick a song from the playlists according to mode."""
+    """Pick a song from the playlists according to mode.
+
+    "any" means any song in the library, Mixed included. It is deliberately not
+    tied to the profile's "Include Mixed playlist in views" checkbox: that box
+    controls which tabs render, not what the library contains. (Danny decided
+    this 2026-09-19; before that, "any" drew from Hype + Chill only, so the 5
+    Mixed seed songs could never be picked and a Mixed-only library reported
+    "No songs available".)
+
+    Any mode that is not "hype" or "chill" is treated as "any", typos included.
+    """
     if mode == "hype":
         songs = playlists.get("Hype", [])
     elif mode == "chill":
         songs = playlists.get("Chill", [])
     else:
-        songs = playlists.get("Hype", []) + playlists.get("Chill", [])
+        # Fix (2026-09-19): Mixed included -- see the docstring.
+        songs = (
+            playlists.get("Hype", [])
+            + playlists.get("Chill", [])
+            + playlists.get("Mixed", [])
+        )
 
     return random_choice_or_none(songs)
 

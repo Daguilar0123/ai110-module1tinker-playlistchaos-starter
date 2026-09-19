@@ -1,10 +1,11 @@
-"""Checks for the mood-profile sidebar in app.py.
+"""Checks for app.py's UI: the mood-profile sidebar and the stats tiles.
 
 Run with:
 
-    .venv/bin/python -B test_app_sidebar.py
+    .venv/bin/python -B test_app.py
 
-(-B stops Python rewriting the git-tracked .pyc files in __pycache__/.)
+(-B just avoids writing bytecode nobody reads. Until 2026-09-19 it also kept test
+runs from dirtying git-tracked .pyc files, but __pycache__/ is gitignored now.)
 
 Written 2026-09-19 alongside the range-slider fix. Uses st.testing.v1.AppTest,
 which runs app.py in-process and headless -- no browser, no server, no port --
@@ -13,8 +14,12 @@ than eyeballed once. tester1's review (agent_messages/2026-09-19-01) verified
 the classification logic but explicitly ran nothing in Streamlit; this file
 covers that gap.
 
-The classification rules themselves are tested in test_playlist_logic.py. What
-this file tests is that the sidebar feeds them the right thresholds.
+The classification rules and the stats arithmetic are tested in
+test_playlist_logic.py. What this file tests is that the UI feeds them the right
+inputs and renders the right numbers back.
+
+Renamed from test_app_sidebar.py on 2026-09-19, when the stats-tile checks were
+added: those tiles are on the main page, so "sidebar" no longer described the file.
 """
 
 from streamlit.testing.v1 import AppTest
@@ -53,6 +58,16 @@ def selectbox(at, label):
             return box
     raise AssertionError(
         f"no selectbox labeled {label!r}; found {[b.label for b in at.selectbox]}"
+    )
+
+
+def metric(at, label):
+    """Return a stats tile's rendered value by label."""
+    for tile in at.metric:
+        if tile.label == label:
+            return tile.value
+    raise AssertionError(
+        f"no metric labeled {label!r}; found {[t.label for t in at.metric]}"
     )
 
 
@@ -119,6 +134,13 @@ check("[guard] the selectbox still records the choice in the profile",
       at.session_state.profile["favorite_genre"], "ambient")
 check("[guard] but energy-1 ambient songs stay Chill instead of turning Hype",
       {t: mood_of(at, t) for t in before}, before)
+
+print("\nStats tiles read back from the rendered page")
+at = AppTest.from_file("app.py").run()
+check("[red] the Hype ratio tile shows 0.50, not 1.00 (11 of 22 seed songs)",
+      metric(at, "Hype ratio"), "0.50")
+check("[red] the Average energy tile shows 5.73 (126 / 22), not 4.05",
+      metric(at, "Average energy"), "5.73")
 
 print()
 if FAILURES:

@@ -15,10 +15,13 @@ edge case.
 - Install deps: `pip install -r requirements.txt` (only dependency: `streamlit>=1.36.0`) —
   a `.venv` already exists in the repo with this installed.
 - Run the app: `streamlit run app.py`
-- Run the checks: `.venv/bin/python -B test_playlist_logic.py` (classification rules, 29
-  checks) and `.venv/bin/python -B test_app_sidebar.py` (sidebar wiring via
-  `st.testing.v1.AppTest`, headless, 20 checks). Both are plain scripts that print
-  PASS/FAIL and exit non-zero on failure. Added 2026-09-19.
+- Run the checks: `.venv/bin/python -B test_playlist_logic.py` (pure logic —
+  classification, stats, lucky pick; 43 checks) and `.venv/bin/python -B test_app.py`
+  (app UI — sidebar wiring and stats tiles, via `st.testing.v1.AppTest`, headless; 22
+  checks). Both are plain scripts that print PASS/FAIL and exit non-zero on failure.
+  Added 2026-09-19. `test_app.py` was called `test_app_sidebar.py` until the stats-tile
+  checks landed the same day; the tiles are on the main page, so the old name stopped
+  being accurate.
 - No lint or build tooling, no pytest, no config files, no CI. The `-B` flag is no longer
   load-bearing now that `__pycache__/` is gitignored (2026-09-19); it is kept in the
   documented commands only to avoid writing bytecode nobody reads.
@@ -55,14 +58,30 @@ These live in `playlist_logic.py` and match the "unpredictable behavior" the REA
   a mid-energy rock song still lands in Hype at the default profile, which is intended
   (Danny, 2026-09-19); and whole-word matching means "afterparty" is not "party" and
   "Rocket Man" is not a rock song. Do not change the keyword lists to make a check pass.
-- `compute_playlist_stats`: `hype_ratio` divides by `len(hype)` instead of total song count, so
-  it's always 1.0 whenever any hype song exists. `avg_energy` sums energy over the `hype` list
-  only but divides by the total song count across all playlists.
+- `compute_playlist_stats`: **fixed 2026-09-19 — no longer a quirk.** Both figures are now
+  over the whole library. `hype_ratio` used to divide the Hype count by itself, so it read
+  1.00 whenever a single Hype song existed and never moved whatever you added; it is now
+  `len(hype) / len(all_songs)` (0.50 for the seed library). `avg_energy` used to sum only the
+  Hype list while dividing by every song, so it averaged nothing; it now sums `all_songs`
+  (5.73 for the seed library, 126 / 22 — it read 4.05 before). The `if total > 0` and
+  `if all_songs:` guards are unchanged, so an empty library still returns zeros.
+- `most_common_artist` / the "Most common artist" line: **still a live quirk, unfixed.** All
+  22 seed artists are unique, so there is no most-common artist and the function returns
+  whichever one sorts first at count 1 — the app reads "Most common artist: ac/dc (1 songs)".
+  Three problems: the label asserts something false, "1 songs" is a pluralization bug, and
+  `normalize_artist` lowercases the name so it renders `ac/dc`, not `AC/DC`. It also shifts
+  when the mood bands move (at bands 9/10 it becomes `darude`), because it is really just the
+  first song in the Hype list. Found 2026-09-19; Danny scoped it out of that session's work.
 - `merge_playlists(a, b)`: `merged[key] = a.get(key, [])` reuses `a`'s list object rather than
   copying it, so `.extend(b[key])` mutates `a` in place. Harmless today since `app.py` always
   passes `b={}`, but would cause aliasing bugs if that call site changes.
-- `lucky_pick`: `mode="any"` only draws from `Hype + Chill` — Mixed songs are never eligible.
-  (README's stretch goals explicitly mention improving Mixed-song handling.)
+- `lucky_pick`: **fixed 2026-09-19 — no longer a quirk.** `mode="any"` now draws from Hype +
+  Chill + Mixed. Danny's decision (2026-09-19): "any" means any song in the library, and it is
+  deliberately **not** tied to the profile's "Include Mixed playlist in views" checkbox — that
+  box controls which tabs render, not what the library contains. The dropdown still offers
+  any / hype / chill, and any unrecognised mode is still treated as "any". Before this, the 5
+  Mixed seed songs could never be picked and the History summary's Mixed count could never
+  leave zero.
 - `app.py`'s `profile_sidebar()`: **the "Favorite genre" selectbox no longer affects any
   playlist** (2026-09-19), since `classify_song` stopped reading `favorite_genre`. It still
   renders and still records the choice into the profile, so it currently looks live but is

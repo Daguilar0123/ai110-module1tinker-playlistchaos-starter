@@ -1,10 +1,11 @@
-"""Checks for playlist_logic.classify_song.
+"""Checks for the pure logic in playlist_logic.py.
 
 No test framework is installed in this repo and none is required. Run with:
 
     .venv/bin/python -B test_playlist_logic.py
 
-(-B stops Python rewriting the git-tracked .pyc files in __pycache__/.)
+(-B just avoids writing bytecode nobody reads. Until 2026-09-19 it also kept test
+runs from dirtying git-tracked .pyc files, but __pycache__/ is gitignored now.)
 
 Written 2026-09-19 BEFORE the classify_song fix, test-first, so it is expected to
 fail until the fix lands. Revised 2026-09-19 after review (see
@@ -13,13 +14,23 @@ Hotel California be Mixed at the default profile, which contradicted the regress
 guard and the planned design. Danny decided the same day that a mid-energy rock song
 stays Hype at the default profile.
 
+Extended 2026-09-19 to cover compute_playlist_stats and lucky_pick, per
+agent_messages/2026-09-19-03-tester1-to-claude-cp.md.
+
 Each check is tagged in its label:
     [red]   fails on the unfixed code; the fix must turn it green
     [guard] already passes on the unfixed code; the fix must not break it
 """
 
 import app
-from playlist_logic import DEFAULT_PROFILE, build_playlists, classify_song, normalize_song
+from playlist_logic import (
+    DEFAULT_PROFILE,
+    build_playlists,
+    classify_song,
+    compute_playlist_stats,
+    lucky_pick,
+    normalize_song,
+)
 
 FAILURES = []
 
@@ -229,6 +240,106 @@ check(
     "[guard] default profile puts every one of the 22 seed songs where it is today",
     actual_default,
     EXPECTED_DEFAULT,
+)
+
+
+def library(hype=(), chill=(), mixed=()):
+    """Return a playlist map built from bare energy numbers, e.g. library(hype=[9])."""
+    def make(mood, energy):
+        return {"title": f"{mood} {energy}", "artist": "a", "genre": "other",
+                "energy": energy, "tags": [], "mood": mood}
+    return {
+        "Hype": [make("Hype", e) for e in hype],
+        "Chill": [make("Chill", e) for e in chill],
+        "Mixed": [make("Mixed", e) for e in mixed],
+    }
+
+
+def picked_title(playlists, mode):
+    """Return the title lucky_pick chose, None if it chose nothing, or the crash."""
+    pick = attempt(lambda: lucky_pick(playlists, mode=mode))
+    return pick["title"] if isinstance(pick, dict) else pick
+
+
+# --- Stats: ratios and averages are over the whole library ----------------------
+print("\nStats - hype_ratio and avg_energy must use every song")
+small = library(hype=[9], chill=[1, 2], mixed=[4])
+check(
+    "[red] hype_ratio is Hype songs over ALL songs: 1 of 4 is 0.25",
+    compute_playlist_stats(small)["hype_ratio"],
+    0.25,
+)
+check(
+    "[red] avg_energy averages ALL songs: (9 + 1 + 2 + 4) / 4 is 4.0",
+    compute_playlist_stats(small)["avg_energy"],
+    4.0,
+)
+check(
+    "[guard] the four counts are unchanged: total 4, hype 1, chill 2, mixed 1",
+    tuple(compute_playlist_stats(small)[k]
+          for k in ("total_songs", "hype_count", "chill_count", "mixed_count")),
+    (4, 1, 2, 1),
+)
+no_hype = library(chill=[1, 3])
+check(
+    "[red] avg_energy still works with no Hype songs: (1 + 3) / 2 is 2.0",
+    compute_playlist_stats(no_hype)["avg_energy"],
+    2.0,
+)
+check(
+    "[guard] hype_ratio is 0.0 when there are no Hype songs",
+    compute_playlist_stats(no_hype)["hype_ratio"],
+    0.0,
+)
+check(
+    "[guard] an empty library gives zeros, not a ZeroDivisionError",
+    attempt(lambda: tuple(compute_playlist_stats(library())[k]
+                          for k in ("total_songs", "hype_ratio", "avg_energy"))),
+    (0, 0.0, 0.0),
+)
+seed_playlists = build_playlists(app.default_songs(), profile())
+check(
+    "[red] seed library at the default profile: hype_ratio is 11 of 22, 0.5",
+    compute_playlist_stats(seed_playlists)["hype_ratio"],
+    0.5,
+)
+check(
+    "[red] seed library at the default profile: avg_energy is 126 / 22, shown as 5.73",
+    round(compute_playlist_stats(seed_playlists)["avg_energy"], 2),
+    5.73,
+)
+
+# --- Lucky pick: "any" means any song (Danny, 2026-09-19) -----------------------
+print("\nLucky pick - 'any' must include Mixed songs")
+check(
+    "[red] 'any' can pick a Mixed song when Mixed is all there is",
+    picked_title(library(mixed=[5]), "any"),
+    "Mixed 5",
+)
+check(
+    "[guard] 'any' can pick a Hype song when Hype is all there is",
+    picked_title(library(hype=[9]), "any"),
+    "Hype 9",
+)
+check(
+    "[guard] 'any' can pick a Chill song when Chill is all there is",
+    picked_title(library(chill=[1]), "any"),
+    "Chill 1",
+)
+check(
+    "[guard] 'hype' mode never falls back to Chill or Mixed songs",
+    picked_title(library(chill=[1], mixed=[5]), "hype"),
+    None,
+)
+check(
+    "[guard] 'chill' mode never falls back to Hype or Mixed songs",
+    picked_title(library(hype=[9], mixed=[5]), "chill"),
+    None,
+)
+check(
+    "[guard] an empty library returns None instead of crashing (Danny's fix, 534e0be)",
+    picked_title(library(), "any"),
+    None,
 )
 
 print()
